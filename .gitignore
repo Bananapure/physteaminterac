@@ -1,0 +1,34 @@
+# --- OS Metadata ---
+.DS_Store
+Thumbs.db
+
+# --- Environment Secrets (CRITICAL) ---
+.env
+.env.local
+.env.*.local
+
+# --- Dependencies (They are heavy; get them via 'npm install' instead) ---
+node_modules/
+jspm_packages/
+
+# --- Build Outputs ---
+dist/
+build/
+out/
+.next/
+
+# --- Logs ---
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+*.log
+
+# --- Editor Settings ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+#file
+STEAM_PhyInteractions_Art.md

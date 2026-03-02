@@ -218,6 +218,140 @@
             pointer-events: none;
             z-index: 5;
         }
+
+        /* ─── Help Button ─── */
+        #btn-help {
+            position: fixed;
+            bottom: 24px;
+            left: 24px;
+            z-index: 30;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            color: var(--accent);
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all .25s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #btn-help:hover {
+            background: rgba(0, 212, 255, 0.2);
+            box-shadow: 0 0 16px var(--accent-glow);
+        }
+
+        /* ─── Help Panel Overlay ─── */
+        #help-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: rgba(0, 0, 0, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #help-overlay.open {
+            display: flex;
+        }
+
+        #help-panel {
+            width: 480px;
+            max-height: 80vh;
+            overflow-y: auto;
+            background: rgba(8, 10, 22, 0.92);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 18px;
+            padding: 32px 28px 26px;
+            backdrop-filter: blur(24px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, .6);
+            position: relative;
+            color: var(--text);
+        }
+
+        #help-panel h2 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: .85rem;
+            letter-spacing: 2px;
+            color: var(--accent);
+            margin-bottom: 16px;
+        }
+
+        #help-panel h3 {
+            font-size: .75rem;
+            font-weight: 600;
+            color: rgba(168, 85, 247, 0.9);
+            margin: 14px 0 6px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #help-panel p,
+        #help-panel li {
+            font-size: .73rem;
+            line-height: 1.6;
+            color: var(--text-dim);
+        }
+
+        #help-panel ul {
+            padding-left: 16px;
+            margin-bottom: 6px;
+        }
+
+        #help-panel li {
+            margin-bottom: 3px;
+        }
+
+        #help-panel .key {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        #help-close {
+            position: absolute;
+            top: 14px;
+            right: 16px;
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: color .2s;
+        }
+
+        #help-close:hover {
+            color: #fff;
+        }
+
+        /* ─── Orbit Step Indicator ─── */
+        #orbit-indicator {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 50;
+            background: rgba(168, 85, 247, 0.12);
+            border: 1px solid rgba(168, 85, 247, 0.35);
+            border-radius: 12px;
+            padding: 10px 24px;
+            font-family: 'Inter', sans-serif;
+            font-size: .75rem;
+            color: rgba(168, 85, 247, 0.9);
+            letter-spacing: .5px;
+            backdrop-filter: blur(12px);
+            display: none;
+            text-align: center;
+        }
+
+        #orbit-indicator.show {
+            display: block;
+        }
     </style>
 </head>
 
@@ -242,6 +376,54 @@
             <button class="btn" id="btn-orbit" onclick="toggleOrbitMode()">🌀 Orbit Setup</button>
             <button class="btn" onclick="addRandomBody()">+ Random</button>
             <button class="btn" onclick="clearSystem()">Reset</button>
+        </div>
+    </div>
+
+    <!-- Orbit Step Indicator -->
+    <div id="orbit-indicator"></div>
+
+    <!-- Help Button -->
+    <button id="btn-help" onclick="toggleHelp()">?</button>
+
+    <!-- Help Panel Overlay -->
+    <div id="help-overlay" onclick="if(event.target===this)toggleHelp()">
+        <div id="help-panel">
+            <button id="help-close" onclick="toggleHelp()">✕</button>
+            <h2>HOW TO USE</h2>
+            <h3>Placing Bodies</h3>
+            <ul>
+                <li><span class="key">Click</span> anywhere to place a small planet</li>
+                <li><span class="key">Click & Drag</span> to slingshot a planet with velocity</li>
+                <li><span class="key">Right-click</span> to place a massive star</li>
+            </ul>
+            <h3>🌀 Orbit Setup Mode</h3>
+            <p>Click the <span class="key">Orbit Setup</span> button, then:<br>
+                <strong>Step 1:</strong> Click to place a central star.<br>
+                <strong>Step 2:</strong> Move your mouse to set the orbit radius — a preview circle shows the path.
+                Click to launch a planet in a mathematically perfect circular orbit.
+            </p>
+            <h3>Invisible Interactions</h3>
+            <p>Every body emits an invisible gravitational field (shown as expanding ripple rings). When two bodies are
+                close enough, an <span class="key">Invisible Bond</span> forms — a flowing energy line connecting them.
+                The glowing dot at the midpoint is the <span class="key">Force Nexus</span>, where the interaction
+                peaks. Small arrows (whiskers) on each body reveal the direction of the hidden gravitational pull.</p>
+            <h3>The Cosmic Song</h3>
+            <p>Enable audio to hear gravity turned into music. Each pair of interacting bodies produces a tone — the
+                <span class="key">closer</span> two bodies are, the more <span class="key">consonant</span> the interval
+                (Perfect 5th, Major 3rd). As they drift apart, the interval becomes more <span
+                    class="key">dissonant</span> (Tritone, Minor 2nd). The result is a unique symphony shaped entirely
+                by orbital geometry.
+            </p>
+            <h3>Hover</h3>
+            <p>Hover your mouse over any body to see its <span class="key">mass</span>, <span
+                    class="key">velocity</span>, <span class="key">kinetic energy</span>, and more.</p>
+            <h3>Controls</h3>
+            <ul>
+                <li><span class="key">♫ Start Audio</span> — Enable/disable the gravitational symphony</li>
+                <li><span class="key">Trails</span> — Toggle orbital trail lines</li>
+                <li><span class="key">+ Random</span> — Add a random body near the center</li>
+                <li><span class="key">Reset</span> — Clear all bodies</li>
+            </ul>
         </div>
     </div>
 
@@ -277,6 +459,8 @@
         let mouseDown = false;
         let dragStart = null;
         let dragCurrent = null;
+        let mousePos = { x: -999, y: -999 };
+        let hoveredBody = null;
 
         // ─── Orbit Mode State ───
         let orbitMode = null; // null | { phase: 'place_star' } | { phase: 'place_orbit', anchor, previewX, previewY }
@@ -392,13 +576,15 @@
         //  BODY CLASS
         // ═══════════════════════════════════════════
         class Body {
-            constructor(x, y, vx, vy, mass, colorIndex) {
+            constructor(x, y, vx, vy, mass, colorIndex, isStar = false) {
                 this.x = x;
                 this.y = y;
                 this.vx = vx;
                 this.vy = vy;
                 this.mass = mass;
-                this.radius = Math.cbrt(mass) * 2.5;
+                this.isStar = isStar;
+                // Stars are dramatically larger than planets
+                this.radius = isStar ? Math.cbrt(mass) * 1.8 : Math.cbrt(mass) * 2.0;
                 const c = NODE_COLORS[colorIndex % NODE_COLORS.length];
                 this.hue = c.h;
                 this.sat = c.s;
@@ -523,7 +709,7 @@
                         a.x = (a.x * a.mass + b.x * b.mass) / totalMass;
                         a.y = (a.y * a.mass + b.y * b.mass) / totalMass;
                         a.mass = totalMass;
-                        a.radius = Math.cbrt(a.mass) * 2.5;
+                        a.radius = a.isStar ? Math.cbrt(a.mass) * 1.8 : Math.cbrt(a.mass) * 2.0;
                         a.hue = (a.hue + b.hue) / 2;
                         a.color = `hsl(${a.hue}, ${a.sat}%, ${a.lit}%)`;
                         cleanupPairAudio(j);
@@ -710,17 +896,17 @@
         function initAudioContext() {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-            // ── Compressor (gentler to allow dynamics) ──
+            // ── Compressor (tighter to catch harshness) ──
             compressor = audioCtx.createDynamicsCompressor();
-            compressor.threshold.value = -14;
-            compressor.knee.value = 10;
-            compressor.ratio.value = 4;
+            compressor.threshold.value = -20;
+            compressor.knee.value = 12;
+            compressor.ratio.value = 6;
             compressor.attack.value = 0.003;
             compressor.release.value = 0.2;
 
-            // ── Master Gain (louder!) ──
+            // ── Master Gain ──
             masterGain = audioCtx.createGain();
-            masterGain.gain.value = 0.8;
+            masterGain.gain.value = 0.65;
 
             // ── Convolution Reverb ──
             convolver = audioCtx.createConvolver();
@@ -809,14 +995,14 @@
             carrier.type = 'sine';
             carrier.frequency.value = freq * 2; // Octave up for shimmer
             modulator.type = 'sine';
-            modulator.frequency.value = freq * 3.5; // Non-harmonic ratio for metallic bell
-            modGain.gain.value = freq * 0.4;
+            modulator.frequency.value = freq * 2; // Harmonic ratio for warm bell
+            modGain.gain.value = freq * 0.15;
 
             modulator.connect(modGain);
             modGain.connect(carrier.frequency);
 
-            bellGain.gain.setValueAtTime(0.12, now);
-            bellGain.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
+            bellGain.gain.setValueAtTime(0.06, now);
+            bellGain.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
 
             bellPan.pan.value = Math.max(-1, Math.min(1, panValue));
 
@@ -839,7 +1025,7 @@
             // ── Update Drone based on total gravitational energy ──
             if (droneGain) {
                 const totalEnergy = bodies.reduce((sum, b) => sum + b.kineticEnergy, 0);
-                const droneVol = Math.min(0.06 + totalEnergy * 0.0003, 0.18);
+                const droneVol = Math.min(0.04 + totalEnergy * 0.0002, 0.10);
                 droneGain.gain.setTargetAtTime(bodies.length > 0 ? droneVol : 0, now, 0.5);
 
                 // Modulate drone filter by energy for movement
@@ -867,7 +1053,7 @@
                     const baseFreq = a.rootNote;
                     const freq = baseFreq * interval.ratio;
                     const proximity = 1 - dist / maxDist;
-                    const vol = Math.pow(proximity, 1.5) * 0.22 * interval.consonance;
+                    const vol = Math.pow(proximity, 2.0) * 0.12 * interval.consonance;
 
                     // Stereo pan based on midpoint X position
                     const midX = (a.x + b.x) / 2;
@@ -887,13 +1073,13 @@
                         // Update existing pair
                         const pair = activePairOscillators.get(key);
                         pair.osc1.frequency.setTargetAtTime(freq, now, 0.15);
-                        pair.osc2.frequency.setTargetAtTime(freq * 1.00405, now, 0.15); // +7 cents detune
+                        pair.osc2.frequency.setTargetAtTime(freq * 1.0017, now, 0.15); // +3 cents detune
                         pair.gain.gain.setTargetAtTime(vol, now, 0.1);
                         pair.panner.pan.setTargetAtTime(panVal, now, 0.15);
                     } else {
                         // Create new layered pair
-                        const waveforms = ['sine', 'triangle', 'sawtooth'];
-                        const waveIdx = (a.id + b.id) % 3;
+                        const waveforms = ['sine', 'triangle'];
+                        const waveIdx = (a.id + b.id) % 2;
                         const waveType = waveforms[waveIdx];
 
                         const osc1 = audioCtx.createOscillator();
@@ -904,26 +1090,13 @@
                         osc1.type = waveType;
                         osc1.frequency.value = freq;
                         osc2.type = 'sine'; // Sub is always pure sine
-                        osc2.frequency.value = freq * 1.00405; // +7 cents detune
+                        osc2.frequency.value = freq * 1.0017; // +3 cents detune (subtle shimmer)
 
                         gain.gain.value = 0;
-                        gain.gain.setTargetAtTime(vol, now, 0.25);
+                        gain.gain.setTargetAtTime(vol, now, 0.3);
                         panner.pan.value = panVal;
 
-                        let filter = null;
-
-                        if (waveType === 'sawtooth') {
-                            // Tame the sawtooth with a low-pass filter
-                            filter = audioCtx.createBiquadFilter();
-                            filter.type = 'lowpass';
-                            filter.frequency.value = 900;
-                            filter.Q.value = 1.5;
-                            osc1.connect(filter);
-                            filter.connect(gain);
-                        } else {
-                            osc1.connect(gain);
-                        }
-
+                        osc1.connect(gain);
                         osc2.connect(gain);
                         gain.connect(panner);
                         panner.connect(masterGain);
@@ -931,7 +1104,7 @@
                         osc1.start(now);
                         osc2.start(now);
 
-                        activePairOscillators.set(key, { osc1, osc2, gain, panner, filter });
+                        activePairOscillators.set(key, { osc1, osc2, gain, panner });
                     }
                 }
             }
@@ -955,17 +1128,21 @@
         // ═══════════════════════════════════════════
         function toggleOrbitMode() {
             const btn = document.getElementById('btn-orbit');
+            const indicator = document.getElementById('orbit-indicator');
             if (orbitMode) {
                 // Cancel orbit mode
                 orbitMode = null;
                 btn.classList.remove('orbit-active');
                 btn.textContent = '🌀 Orbit Setup';
+                indicator.classList.remove('show');
                 showToast('Orbit mode cancelled');
             } else {
                 orbitMode = { phase: 'place_star' };
                 btn.classList.add('orbit-active');
                 btn.textContent = '🌀 Cancel Orbit';
-                showToast('Click to place the central star…');
+                indicator.textContent = 'Step 1 — Click anywhere on the canvas to place a central Star ☀️';
+                indicator.classList.add('show');
+                showToast('Orbit Setup activated');
             }
         }
 
@@ -981,11 +1158,12 @@
                     document.getElementById('btn-orbit').textContent = '🌀 Orbit Setup';
                     return;
                 }
-                const mass = 100 + Math.random() * 40;
-                const anchor = new Body(x, y, 0, 0, mass, bodies.length);
+                const mass = 800 + Math.random() * 400;
+                const anchor = new Body(x, y, 0, 0, mass, bodies.length, true);
                 bodies.push(anchor);
                 orbitMode = { phase: 'place_orbit', anchor: anchor, previewX: x + 100, previewY: y };
-                showToast('Move to set orbit radius — click to launch satellite');
+                document.getElementById('orbit-indicator').textContent = 'Step 2 — Move to set orbit radius, then click to launch a Planet 🌍';
+                showToast('Star placed! Now click to set the orbit');
             } else if (orbitMode.phase === 'place_orbit') {
                 // Phase 2: Place satellite in perfect circular orbit
                 if (bodies.length >= MAX_BODIES) {
@@ -1014,8 +1192,8 @@
                 const vx = -Math.sin(angle) * orbitalSpeed;
                 const vy = Math.cos(angle) * orbitalSpeed;
 
-                const mass = 8 + Math.random() * 12;
-                const satellite = new Body(x, y, vx, vy, mass, bodies.length);
+                const mass = 5 + Math.random() * 10;
+                const satellite = new Body(x, y, vx, vy, mass, bodies.length, false);
                 bodies.push(satellite);
 
                 const period = (2 * Math.PI * r / orbitalSpeed / 60).toFixed(1);
@@ -1026,6 +1204,7 @@
                 const btn = document.getElementById('btn-orbit');
                 btn.classList.remove('orbit-active');
                 btn.textContent = '🌀 Orbit Setup';
+                document.getElementById('orbit-indicator').classList.remove('show');
             }
         }
 
@@ -1089,8 +1268,8 @@
                 showToast('Maximum capacity reached');
                 return;
             }
-            const mass = massive ? 80 + Math.random() * 60 : 12 + Math.random() * 30;
-            const body = new Body(x, y, vx, vy, mass, bodies.length);
+            const mass = massive ? 800 + Math.random() * 400 : 5 + Math.random() * 10;
+            const body = new Body(x, y, vx, vy, mass, bodies.length, massive);
             bodies.push(body);
             showToast(`Node #${bodies.length} placed — Mass: ${mass.toFixed(0)}`);
         }
@@ -1118,6 +1297,9 @@
         });
 
         canvas.addEventListener('mousemove', (e) => {
+            mousePos.x = e.clientX;
+            mousePos.y = e.clientY;
+
             // Orbit mode preview tracking
             if (orbitMode && orbitMode.phase === 'place_orbit') {
                 orbitMode.previewX = e.clientX;
@@ -1127,6 +1309,18 @@
 
             if (mouseDown) {
                 dragCurrent = { x: e.clientX, y: e.clientY };
+            }
+
+            // Hover detection
+            hoveredBody = null;
+            for (const b of bodies) {
+                const dx = e.clientX - b.x;
+                const dy = e.clientY - b.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < Math.max(b.radius * 2, 12)) {
+                    hoveredBody = b;
+                    break;
+                }
             }
         });
 
@@ -1218,7 +1412,7 @@
             const dist = 100 + Math.random() * Math.min(W, H) * 0.3;
             const x = W / 2 + Math.cos(angle) * dist;
             const y = H / 2 + Math.sin(angle) * dist;
-            const orbitalSpeed = Math.sqrt(G * 50 / dist) * (0.5 + Math.random());
+            const orbitalSpeed = Math.sqrt(G * 800 / dist) * (0.5 + Math.random());
             const vx = Math.sin(angle) * orbitalSpeed;
             const vy = -Math.cos(angle) * orbitalSpeed;
             placeBody(x, y, vx, vy, false);
@@ -1238,8 +1432,13 @@
                 const btn = document.getElementById('btn-orbit');
                 btn.classList.remove('orbit-active');
                 btn.textContent = '🌀 Orbit Setup';
+                document.getElementById('orbit-indicator').classList.remove('show');
             }
             showToast('Cosmic Reset — canvas cleared');
+        }
+
+        function toggleHelp() {
+            document.getElementById('help-overlay').classList.toggle('open');
         }
 
         function showToast(msg) {
@@ -1304,6 +1503,7 @@
             // Overlays
             drawDragPreview();
             drawOrbitPreview();
+            drawHoverTooltip();
 
             // Update audio every ~3 frames for perf
             if (frameCount % 3 === 0) updateAudio();
@@ -1322,6 +1522,52 @@
         window.addEventListener('resize', resize);
         resize();
         animate(0);
+
+        // ═══════════════════════════════════════════
+        //  HOVER TOOLTIP — Body details on mouseover
+        // ═══════════════════════════════════════════
+        function drawHoverTooltip() {
+            if (!hoveredBody || mouseDown) return;
+            const b = hoveredBody;
+            const x = b.x + b.radius * 2 + 14;
+            const y = b.y - 20;
+
+            const lines = [
+                `${b.isStar ? '☀️ Star' : '🌍 Planet'} #${b.id}`,
+                `Mass: ${b.mass.toFixed(1)}`,
+                `Velocity: ${b.speed.toFixed(3)}`,
+                `KE: ${b.kineticEnergy.toFixed(2)}`,
+                `Radius: ${b.radius.toFixed(1)}px`,
+            ];
+
+            const lineH = 16;
+            const padX = 10;
+            const padY = 8;
+            const w = 140;
+            const h = lines.length * lineH + padY * 2;
+
+            // Flip to left side if near right edge
+            const drawX = (x + w + 10 > W) ? b.x - b.radius * 2 - w - 14 : x;
+            const drawY = Math.max(10, Math.min(y, H - h - 10));
+
+            // Background
+            ctx.fillStyle = 'rgba(8, 10, 22, 0.85)';
+            ctx.beginPath();
+            ctx.roundRect(drawX, drawY, w, h, 8);
+            ctx.fill();
+            ctx.strokeStyle = `hsla(${b.hue}, ${b.sat}%, ${b.lit}%, 0.3)`;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // Text
+            ctx.font = '11px Inter, sans-serif';
+            for (let i = 0; i < lines.length; i++) {
+                ctx.fillStyle = i === 0
+                    ? `hsla(${b.hue}, ${b.sat}%, ${b.lit}%, 0.95)`
+                    : 'rgba(207, 216, 232, 0.7)';
+                ctx.fillText(lines[i], drawX + padX, drawY + padY + (i + 1) * lineH - 3);
+            }
+        }
 
     </script>
 </body>

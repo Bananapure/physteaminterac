@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Celestial Symphony — Interactive Gravity Visualizer</title>
+    <meta name="description"
+        content="An interactive generative art piece where gravity nodes create a unique cosmic song based on orbital geometry and musical intervals.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Orbitron:wght@400;700&display=swap"
+        rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #030308;
+            --accent: #00d4ff;
+            --accent-glow: rgba(0, 212, 255, 0.25);
+            --panel: rgba(8, 10, 22, 0.82);
+            --border: rgba(255, 255, 255, 0.08);
+            --text: #cfd8e8;
+            --text-dim: rgba(207, 216, 232, 0.55);
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+        }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            color: var(--text);
+            cursor: crosshair;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        /* ─── UI Panel ─── */
+        #ui {
+            position: fixed;
+            top: 24px;
+            left: 24px;
+            z-index: 20;
+            width: 310px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 26px 24px 22px;
+            backdrop-filter: blur(18px) saturate(1.4);
+            -webkit-backdrop-filter: blur(18px) saturate(1.4);
+            box-shadow: 0 12px 48px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .04);
+            user-select: none;
+        }
+
+        #ui h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: .95rem;
+            font-weight: 700;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            background: linear-gradient(135deg, #00d4ff, #a855f7, #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 6px;
+        }
+
+        #ui .subtitle {
+            font-size: .72rem;
+            font-style: italic;
+            color: var(--text-dim);
+            margin-bottom: 16px;
+            line-height: 1.45;
+        }
+
+        #ui .instructions {
+            font-size: .73rem;
+            color: var(--text-dim);
+            line-height: 1.5;
+            margin-bottom: 18px;
+        }
+
+        #ui .instructions span {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            flex: 1 1 auto;
+            min-width: 0;
+            background: rgba(0, 212, 255, 0.06);
+            border: 1px solid rgba(0, 212, 255, 0.25);
+            color: var(--accent);
+            padding: 9px 0;
+            border-radius: 8px;
+            font-family: 'Inter', sans-serif;
+            font-size: .68rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all .25s ease;
+        }
+
+        .btn:hover {
+            background: rgba(0, 212, 255, 0.16);
+            border-color: var(--accent);
+            box-shadow: 0 0 18px var(--accent-glow);
+        }
+
+        .btn.active {
+            background: var(--accent);
+            color: #050510;
+        }
+
+        /* ─── Stats ─── */
+        #stats {
+            position: fixed;
+            bottom: 20px;
+            right: 24px;
+            z-index: 20;
+            font-family: 'Orbitron', monospace;
+            font-size: .6rem;
+            color: var(--text-dim);
+            text-align: right;
+            letter-spacing: 1px;
+            line-height: 1.65;
+            pointer-events: none;
+        }
+
+        /* ─── Toast ─── */
+        #toast {
+            position: fixed;
+            bottom: 48px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #00d4ff, #7c3aed);
+            color: #fff;
+            font-weight: 600;
+            padding: 10px 28px;
+            border-radius: 24px;
+            font-size: .78rem;
+            letter-spacing: .5px;
+            opacity: 0;
+            transition: opacity .45s ease;
+            z-index: 100;
+            pointer-events: none;
+            box-shadow: 0 6px 24px rgba(0, 212, 255, .3);
+        }
+
+        /* ─── Drag Line ─── */
+        #drag-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+    </style>
+</head>
+
+<body>
+
+    <canvas id="canvas"></canvas>
+    <svg id="drag-indicator"></svg>
+
+    <div id="ui">
+        <h1>Celestial Symphony</h1>
+        <p class="subtitle">"Invisible interactions are the silent conductors of the cosmos."</p>
+        <p class="instructions">
+            <span>Click</span> to place a Gravity Node.<br>
+            <span>Drag</span> to slingshot with velocity.<br>
+            <span>Right-click</span> to place a massive Star.
+        </p>
+        <div class="btn-row" style="margin-bottom:8px">
+            <button class="btn" id="btn-audio" onclick="toggleAudio()">♫ Start Audio</button>
+            <button class="btn" id="btn-trails" onclick="toggleTrails()">Trails: On</button>
+        </div>
+        <div class="btn-row">
+            <button class="btn" onclick="addRandomBody()">+ Random</button>
+            <button class="btn" onclick="clearSystem()">Reset</button>
+        </div>
+    </div>
+
+    <div id="stats">
+        <div id="stat-nodes">NODES: 0</div>
+        <div id="stat-pairs">PAIRS: 0</div>
+        <div id="stat-energy">ENERGY: 0</div>
+        <div>RESOLVER: MULTI-STAGE v2.0</div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        // ═══════════════════════════════════════════════════════════════
+        //  CELESTIAL SYMPHONY — Multi-Stage Physics + Audio Engine
+        // ═══════════════════════════════════════════════════════════════
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const toastEl = document.getElementById('toast');
+        const statNodes = document.getElementById('stat-nodes');
+        const statPairs = document.getElementById('stat-pairs');
+        const statEnergy = document.getElementById('stat-energy');
+
+        let W, H;
+        let bodies = [];
+        let stars = [];
+        let showTrails = true;
+        let mouseDown = false;
+        let dragStart = null;
+        let dragCurrent = null;
+
+        // ─── Audio State ───
+        let audioCtx = null;
+        let masterGain = null;
+        let compressor = null;
+        let reverbNode = null;
+        let isAudioOn = false;
+        const activePairOscillators = new Map(); // key: "i-j", value: { osc, gain }
+
+        // ─── Constants ───
+        const G = 0.4;
+        const MAX_BODIES = 15;
+        const SOFTENING_SQ = 250;
+        const TRAIL_LENGTH = 180;
+        const DAMPING = 0.9998;
+        const BOUNDARY_MARGIN = 80;
+
+        // ─── Musical Intervals (frequency ratios relative to a root) ───
+        // Ordered by consonance: most consonant intervals mapped to closest proximity
+        const MUSICAL_INTERVALS = [
+            { name: 'Unison', ratio: 1 / 1, consonance: 1.0 },
+            { name: 'Octave', ratio: 2 / 1, consonance: 0.95 },
+            { name: 'Perfect 5th', ratio: 3 / 2, consonance: 0.9 },
+            { name: 'Perfect 4th', ratio: 4 / 3, consonance: 0.8 },
+            { name: 'Major 3rd', ratio: 5 / 4, consonance: 0.7 },
+            { name: 'Minor 3rd', ratio: 6 / 5, consonance: 0.6 },
+            { name: 'Major 6th', ratio: 5 / 3, consonance: 0.5 },
+            { name: 'Minor 6th', ratio: 8 / 5, consonance: 0.4 },
+            { name: 'Major 2nd', ratio: 9 / 8, consonance: 0.3 },
+            { name: 'Minor 7th', ratio: 16 / 9, consonance: 0.2 },
+            { name: 'Tritone', ratio: 45 / 32, consonance: 0.1 },
+            { name: 'Minor 2nd', ratio: 16 / 15, consonance: 0.05 },
+        ];
+
+        // Root notes (one per body, assigned in a cycle)
+        const ROOT_NOTES = [130.81, 146.83, 164.81, 174.61, 196.00, 220.00, 246.94, 261.63];
+
+        // ─── Color Palette ───
+        const NODE_COLORS = [
+            { h: 195, s: 100, l: 60 },  // Cyan
+            { h: 270, s: 80, l: 65 },  // Purple
+            { h: 330, s: 85, l: 65 },  // Pink
+            { h: 40, s: 95, l: 60 },  // Gold
+            { h: 160, s: 75, l: 55 },  // Teal
+            { h: 15, s: 90, l: 60 },  // Coral
+            { h: 220, s: 85, l: 65 },  // Blue
+            { h: 80, s: 70, l: 55 },  // Lime
+        ];
+
+        // ═══════════════════════════════════════════
+        //  STARFIELD
+        // ═══════════════════════════════════════════
+        function initStars() {
+            stars = [];
+            for (let i = 0; i < 400; i++) {
+                stars.push({
+                    x: Math.random() * W,
+                    y: Math.random() * H,
+                    r: Math.random() * 1.4 + 0.2,
+                    brightness: Math.random(),
+                    twinkleSpeed: 0.003 + Math.random() * 0.008,
+                    twinklePhase: Math.random() * Math.PI * 2,
+                });
+            }
+        }
+
+        function drawStars(time) {
+            for (const s of stars) {
+                const flicker = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(time * s.twinkleSpeed + s.twinklePhase));
+                const alpha = s.brightness * flicker;
+                ctx.beginPath();
+                ctx.fillStyle = `rgba(200, 220, 255, ${alpha.toFixed(3)})`;
+                ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        //  BODY CLASS
+        // ═══════════════════════════════════════════
+        class Body {
+            constructor(x, y, vx, vy, mass, colorIndex) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.mass = mass;
+                this.radius = Math.cbrt(mass) * 2.5;
+                const c = NODE_COLORS[colorIndex % NODE_COLORS.length];
+                this.hue = c.h;
+                this.sat = c.s;
+                this.lit = c.l;
+                this.color = `hsl(${c.h}, ${c.s}%, ${c.l}%)`;
+                this.trail = [];
+                this.id = Body._nextId++;
+                this.rootNote = ROOT_NOTES[this.id % ROOT_NOTES.length];
+                this.pulsePhase = Math.random() * Math.PI * 2;
+            }
+
+            get speed() { return Math.sqrt(this.vx * this.vx + this.vy * this.vy); }
+            get kineticEnergy() { return 0.5 * this.mass * (this.vx * this.vx + this.vy * this.vy); }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.trail.push({ x: this.x, y: this.y });
+                if (this.trail.length > TRAIL_LENGTH) this.trail.shift();
+            }
+
+            drawTrail() {
+                if (!showTrails || this.trail.length < 2) return;
+                const len = this.trail.length;
+                for (let i = 1; i < len; i++) {
+                    const t = i / len;
+                    ctx.beginPath();
+                    ctx.moveTo(this.trail[i - 1].x, this.trail[i - 1].y);
+                    ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                    ctx.strokeStyle = `hsla(${this.hue}, ${this.sat}%, ${this.lit}%, ${(t * 0.45).toFixed(3)})`;
+                    ctx.lineWidth = t * 1.8;
+                    ctx.stroke();
+                }
+            }
+
+            draw(time) {
+                const pulse = 1 + 0.08 * Math.sin(time * 0.003 + this.pulsePhase);
+                const r = this.radius * pulse;
+
+                // Outer glow
+                const glowR = r * 6;
+                const grad = ctx.createRadialGradient(this.x, this.y, r * 0.5, this.x, this.y, glowR);
+                grad.addColorStop(0, `hsla(${this.hue}, ${this.sat}%, ${this.lit}%, 0.18)`);
+                grad.addColorStop(0.4, `hsla(${this.hue}, ${this.sat}%, ${this.lit}%, 0.06)`);
+                grad.addColorStop(1, `hsla(${this.hue}, ${this.sat}%, ${this.lit}%, 0)`);
+                ctx.beginPath();
+                ctx.fillStyle = grad;
+                ctx.arc(this.x, this.y, glowR, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Inner body
+                const innerGrad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, r);
+                innerGrad.addColorStop(0, `hsla(${this.hue}, 100%, 92%, 1)`);
+                innerGrad.addColorStop(0.35, `hsla(${this.hue}, ${this.sat}%, ${this.lit}%, 1)`);
+                innerGrad.addColorStop(1, `hsla(${this.hue}, ${this.sat}%, ${Math.max(this.lit - 20, 20)}%, 0.8)`);
+                ctx.beginPath();
+                ctx.fillStyle = innerGrad;
+                ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        Body._nextId = 0;
+
+        // ═══════════════════════════════════════════
+        //  MULTI-STAGE PHYSICS RESOLVER v2.0
+        // ═══════════════════════════════════════════
+        function resolvePhysics() {
+            const n = bodies.length;
+
+            // STAGE 1: N-Body Gravitational Acceleration
+            for (let i = 0; i < n; i++) {
+                const a = bodies[i];
+                for (let j = i + 1; j < n; j++) {
+                    const b = bodies[j];
+                    const dx = b.x - a.x;
+                    const dy = b.y - a.y;
+                    const distSq = dx * dx + dy * dy + SOFTENING_SQ;
+                    const dist = Math.sqrt(distSq);
+                    const force = G * a.mass * b.mass / distSq;
+                    const fx = force * dx / dist;
+                    const fy = force * dy / dist;
+                    a.vx += fx / a.mass;
+                    a.vy += fy / a.mass;
+                    b.vx -= fx / b.mass;
+                    b.vy -= fy / b.mass;
+                }
+            }
+
+            // STAGE 2: Collision Merging
+            for (let i = 0; i < bodies.length; i++) {
+                for (let j = i + 1; j < bodies.length; j++) {
+                    const a = bodies[i];
+                    const b = bodies[j];
+                    const dx = b.x - a.x;
+                    const dy = b.y - a.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < a.radius + b.radius) {
+                        // Merge b into a (conserve momentum)
+                        const totalMass = a.mass + b.mass;
+                        a.vx = (a.vx * a.mass + b.vx * b.mass) / totalMass;
+                        a.vy = (a.vy * a.mass + b.vy * b.mass) / totalMass;
+                        a.x = (a.x * a.mass + b.x * b.mass) / totalMass;
+                        a.y = (a.y * a.mass + b.y * b.mass) / totalMass;
+                        a.mass = totalMass;
+                        a.radius = Math.cbrt(a.mass) * 2.5;
+                        // Blend hue
+                        a.hue = (a.hue + b.hue) / 2;
+                        a.color = `hsl(${a.hue}, ${a.sat}%, ${a.lit}%)`;
+                        // Remove b
+                        cleanupPairAudio(j);
+                        bodies.splice(j, 1);
+                        j--;
+                        showToast('Collision Merge!');
+                    }
+                }
+            }
+
+            // STAGE 3: Velocity Damping
+            for (const b of bodies) {
+                b.vx *= DAMPING;
+                b.vy *= DAMPING;
+            }
+
+            // STAGE 4: Soft Boundary Wrap
+            for (const b of bodies) {
+                if (b.x < -BOUNDARY_MARGIN) b.x = W + BOUNDARY_MARGIN;
+                else if (b.x > W + BOUNDARY_MARGIN) b.x = -BOUNDARY_MARGIN;
+                if (b.y < -BOUNDARY_MARGIN) b.y = H + BOUNDARY_MARGIN;
+                else if (b.y > H + BOUNDARY_MARGIN) b.y = -BOUNDARY_MARGIN;
+            }
+
+            // STAGE 5: Position Update
+            for (const b of bodies) {
+                b.update();
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        //  CONNECTION LINES (proximity-based)
+        // ═══════════════════════════════════════════
+        function drawConnections() {
+            const maxDist = Math.min(W, H) * 0.35;
+            for (let i = 0; i < bodies.length; i++) {
+                for (let j = i + 1; j < bodies.length; j++) {
+                    const a = bodies[i];
+                    const b = bodies[j];
+                    const dx = b.x - a.x;
+                    const dy = b.y - a.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < maxDist) {
+                        const t = 1 - dist / maxDist;
+                        const alpha = t * t * 0.25;
+                        // Gradient line between the two body colors
+                        const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+                        grad.addColorStop(0, `hsla(${a.hue}, ${a.sat}%, ${a.lit}%, ${alpha.toFixed(3)})`);
+                        grad.addColorStop(1, `hsla(${b.hue}, ${b.sat}%, ${b.lit}%, ${alpha.toFixed(3)})`);
+                        ctx.beginPath();
+                        ctx.moveTo(a.x, a.y);
+                        ctx.lineTo(b.x, b.y);
+                        ctx.strokeStyle = grad;
+                        ctx.lineWidth = t * 2;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        //  AUDIO ENGINE — Musical Interval Mapping
+        // ═══════════════════════════════════════════
+        function initAudioContext() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            // Compressor to prevent clipping
+            compressor = audioCtx.createDynamicsCompressor();
+            compressor.threshold.value = -24;
+            compressor.knee.value = 12;
+            compressor.ratio.value = 8;
+            compressor.attack.value = 0.005;
+            compressor.release.value = 0.15;
+
+            // Reverb (convolver-like via delay feedback)
+            reverbNode = audioCtx.createGain();
+            reverbNode.gain.value = 0.35;
+
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0.45;
+
+            masterGain.connect(compressor);
+            compressor.connect(audioCtx.destination);
+        }
+
+        function getIntervalForDistance(dist) {
+            const maxInteractionDist = Math.min(W, H) * 0.4;
+            const t = Math.min(dist / maxInteractionDist, 1);
+            const idx = Math.floor(t * (MUSICAL_INTERVALS.length - 1));
+            return MUSICAL_INTERVALS[idx];
+        }
+
+        function pairKey(i, j) { return i < j ? `${i}-${j}` : `${j}-${i}`; }
+
+        function cleanupPairAudio(removedIndex) {
+            // Remove all oscillator pairs involving the removed body index
+            for (const [key, pair] of activePairOscillators) {
+                const [a, b] = key.split('-').map(Number);
+                if (a === removedIndex || b === removedIndex) {
+                    try {
+                        pair.gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+                        setTimeout(() => { try { pair.osc.stop(); } catch (e) { } }, 200);
+                    } catch (e) { }
+                    activePairOscillators.delete(key);
+                }
+            }
+        }
+
+        function updateAudio() {
+            if (!isAudioOn || !audioCtx) return;
+            const now = audioCtx.currentTime;
+            const maxDist = Math.min(W, H) * 0.4;
+            const currentPairs = new Set();
+
+            for (let i = 0; i < bodies.length; i++) {
+                for (let j = i + 1; j < bodies.length; j++) {
+                    const a = bodies[i];
+                    const b = bodies[j];
+                    const dx = b.x - a.x;
+                    const dy = b.y - a.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist > maxDist) continue;
+
+                    const key = pairKey(a.id, b.id);
+                    currentPairs.add(key);
+
+                    const interval = getIntervalForDistance(dist);
+                    const baseFreq = a.rootNote;
+                    const freq = baseFreq * interval.ratio;
+                    const vol = Math.pow(1 - dist / maxDist, 2) * 0.08 * interval.consonance;
+
+                    if (activePairOscillators.has(key)) {
+                        // Update existing oscillator
+                        const pair = activePairOscillators.get(key);
+                        pair.osc.frequency.setTargetAtTime(freq, now, 0.15);
+                        pair.gain.gain.setTargetAtTime(vol, now, 0.1);
+                    } else {
+                        // Create new pair oscillator
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+
+                        // Alternate waveforms for textural richness
+                        osc.type = (i + j) % 3 === 0 ? 'triangle' : 'sine';
+                        osc.frequency.value = freq;
+                        gain.gain.value = 0;
+                        gain.gain.setTargetAtTime(vol, now, 0.2);
+
+                        osc.connect(gain);
+                        gain.connect(masterGain);
+                        osc.start(now);
+
+                        activePairOscillators.set(key, { osc, gain });
+                    }
+                }
+            }
+
+            // Fade out and remove pairs that are no longer close
+            for (const [key, pair] of activePairOscillators) {
+                if (!currentPairs.has(key)) {
+                    pair.gain.gain.setTargetAtTime(0, now, 0.3);
+                    setTimeout(() => { try { pair.osc.stop(); } catch (e) { } }, 800);
+                    activePairOscillators.delete(key);
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        //  INTERACTION
+        // ═══════════════════════════════════════════
+        function placeBody(x, y, vx, vy, massive) {
+            if (bodies.length >= MAX_BODIES) {
+                showToast('Maximum capacity reached');
+                return;
+            }
+            const mass = massive ? 80 + Math.random() * 60 : 12 + Math.random() * 30;
+            const body = new Body(x, y, vx, vy, mass, bodies.length);
+            bodies.push(body);
+            showToast(`Node #${bodies.length} placed — Mass: ${mass.toFixed(0)}`);
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 2) {
+                // Right-click: massive star
+                e.preventDefault();
+                const vx = (Math.random() - 0.5) * 0.4;
+                const vy = (Math.random() - 0.5) * 0.4;
+                placeBody(e.clientX, e.clientY, vx, vy, true);
+                return;
+            }
+            mouseDown = true;
+            dragStart = { x: e.clientX, y: e.clientY };
+            dragCurrent = { x: e.clientX, y: e.clientY };
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (mouseDown) {
+                dragCurrent = { x: e.clientX, y: e.clientY };
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (!mouseDown) return;
+            mouseDown = false;
+            const dx = dragStart.x - dragCurrent.x;
+            const dy = dragStart.y - dragCurrent.y;
+            const dragDist = Math.sqrt(dx * dx + dy * dy);
+            // Scale the drag into velocity
+            const scale = 0.06;
+            const vx = dragDist > 5 ? dx * scale : (Math.random() - 0.5) * 0.6;
+            const vy = dragDist > 5 ? dy * scale : (Math.random() - 0.5) * 0.6;
+            placeBody(dragStart.x, dragStart.y, vx, vy, false);
+            dragStart = null;
+            dragCurrent = null;
+        });
+
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // ═══════════════════════════════════════════
+        //  DRAG PREVIEW
+        // ═══════════════════════════════════════════
+        function drawDragPreview() {
+            if (!mouseDown || !dragStart || !dragCurrent) return;
+            const dx = dragStart.x - dragCurrent.x;
+            const dy = dragStart.y - dragCurrent.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 5) return;
+
+            // Draw launch vector
+            ctx.setLineDash([6, 6]);
+            ctx.beginPath();
+            ctx.moveTo(dragStart.x, dragStart.y);
+            ctx.lineTo(dragStart.x + dx * 2.5, dragStart.y + dy * 2.5);
+            ctx.strokeStyle = 'rgba(0, 212, 255, 0.5)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Origin circle
+            ctx.beginPath();
+            ctx.arc(dragStart.x, dragStart.y, 8, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0, 212, 255, 0.6)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // Velocity text
+            const speed = (dist * 0.06).toFixed(1);
+            ctx.font = '11px Inter, sans-serif';
+            ctx.fillStyle = 'rgba(0, 212, 255, 0.7)';
+            ctx.fillText(`v = ${speed}`, dragStart.x + 14, dragStart.y - 14);
+        }
+
+        // ═══════════════════════════════════════════
+        //  UI CONTROLS
+        // ═══════════════════════════════════════════
+        function toggleAudio() {
+            const btn = document.getElementById('btn-audio');
+            if (!isAudioOn) {
+                initAudioContext();
+                isAudioOn = true;
+                btn.textContent = '♫ Audio On';
+                btn.classList.add('active');
+                showToast('Symphony Initialized — place nodes to hear the cosmos');
+            } else {
+                isAudioOn = false;
+                // Fade out all oscillators
+                for (const [key, pair] of activePairOscillators) {
+                    pair.gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+                    setTimeout(() => { try { pair.osc.stop(); } catch (e) { } }, 300);
+                }
+                activePairOscillators.clear();
+                btn.textContent = '♫ Start Audio';
+                btn.classList.remove('active');
+                showToast('Audio paused');
+            }
+        }
+
+        function toggleTrails() {
+            showTrails = !showTrails;
+            const btn = document.getElementById('btn-trails');
+            btn.textContent = showTrails ? 'Trails: On' : 'Trails: Off';
+            if (!showTrails) bodies.forEach(b => b.trail = []);
+        }
+
+        function addRandomBody() {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 100 + Math.random() * Math.min(W, H) * 0.3;
+            const x = W / 2 + Math.cos(angle) * dist;
+            const y = H / 2 + Math.sin(angle) * dist;
+            const orbitalSpeed = Math.sqrt(G * 50 / dist) * (0.5 + Math.random());
+            const vx = Math.sin(angle) * orbitalSpeed;
+            const vy = -Math.cos(angle) * orbitalSpeed;
+            placeBody(x, y, vx, vy, false);
+        }
+
+        function clearSystem() {
+            // Stop all audio
+            for (const [, pair] of activePairOscillators) {
+                try { pair.osc.stop(); } catch (e) { }
+            }
+            activePairOscillators.clear();
+            bodies = [];
+            Body._nextId = 0;
+            showToast('Cosmic Reset — canvas cleared');
+        }
+
+        function showToast(msg) {
+            toastEl.textContent = msg;
+            toastEl.style.opacity = '1';
+            clearTimeout(showToast._timer);
+            showToast._timer = setTimeout(() => toastEl.style.opacity = '0', 2200);
+        }
+
+        // ═══════════════════════════════════════════
+        //  STATS
+        // ═══════════════════════════════════════════
+        function updateStats() {
+            const n = bodies.length;
+            const pairs = n * (n - 1) / 2;
+            const energy = bodies.reduce((sum, b) => sum + b.kineticEnergy, 0);
+            statNodes.textContent = `NODES: ${n}`;
+            statPairs.textContent = `PAIRS: ${pairs}`;
+            statEnergy.textContent = `ENERGY: ${energy.toFixed(1)}`;
+        }
+
+        // ═══════════════════════════════════════════
+        //  MAIN LOOP
+        // ═══════════════════════════════════════════
+        let frameCount = 0;
+
+        function animate(time) {
+            // Clear with subtle fade for motion blur
+            ctx.fillStyle = 'rgba(3, 3, 8, 0.28)';
+            ctx.fillRect(0, 0, W, H);
+
+            drawStars(time);
+            resolvePhysics();
+            drawConnections();
+
+            // Draw trails first, then bodies on top
+            for (const b of bodies) b.drawTrail();
+            for (const b of bodies) b.draw(time);
+
+            drawDragPreview();
+
+            // Update audio every ~3 frames for perf
+            if (frameCount % 3 === 0) updateAudio();
+            if (frameCount % 15 === 0) updateStats();
+            frameCount++;
+
+            requestAnimationFrame(animate);
+        }
+
+        function resize() {
+            W = canvas.width = window.innerWidth;
+            H = canvas.height = window.innerHeight;
+            initStars();
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+        animate(0);
+
+    </script>
+</body>
+
+</html>

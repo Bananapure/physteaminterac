@@ -398,7 +398,8 @@
             </ul>
             <h3>🌀 Orbit Setup Mode</h3>
             <p>Click the <span class="key">Orbit Setup</span> button, then:<br>
-                <strong>Step 1:</strong> Click to place a central star.<br>
+                <strong>Step 1:</strong> Click an <span class="key">existing star</span> to use it as the anchor, or
+                click empty space to create a new one.<br>
                 <strong>Step 2:</strong> Move your mouse to set the orbit radius — a preview circle shows the path.
                 Click to launch a planet in a mathematically perfect circular orbit.
             </p>
@@ -1137,33 +1138,61 @@
                 indicator.classList.remove('show');
                 showToast('Orbit mode cancelled');
             } else {
-                orbitMode = { phase: 'place_star' };
+                orbitMode = { phase: 'place_star', hoveredStar: null };
                 btn.classList.add('orbit-active');
                 btn.textContent = '🌀 Cancel Orbit';
-                indicator.textContent = 'Step 1 — Click anywhere on the canvas to place a central Star ☀️';
+                indicator.textContent = 'Step 1 — Click an existing Star ☀️ or click empty space to create a new one';
                 indicator.classList.add('show');
                 showToast('Orbit Setup activated');
             }
+        }
+
+        function findStarNearPoint(x, y) {
+            // Find the closest existing star within click range
+            let closest = null;
+            let closestDist = Infinity;
+            for (const b of bodies) {
+                if (!b.isStar) continue;
+                const dx = x - b.x;
+                const dy = y - b.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const hitRadius = Math.max(b.radius * 2.5, 25); // generous click area
+                if (dist < hitRadius && dist < closestDist) {
+                    closest = b;
+                    closestDist = dist;
+                }
+            }
+            return closest;
         }
 
         function handleOrbitClick(x, y) {
             if (!orbitMode) return;
 
             if (orbitMode.phase === 'place_star') {
-                // Phase 1: Place massive anchor star
-                if (bodies.length >= MAX_BODIES) {
-                    showToast('Maximum capacity reached');
-                    orbitMode = null;
-                    document.getElementById('btn-orbit').classList.remove('orbit-active');
-                    document.getElementById('btn-orbit').textContent = '🌀 Orbit Setup';
-                    return;
+                // Phase 1: Select existing star OR place a new one
+                const existingStar = findStarNearPoint(x, y);
+
+                if (existingStar) {
+                    // Use the existing star as the anchor
+                    orbitMode = { phase: 'place_orbit', anchor: existingStar, previewX: x + 100, previewY: y };
+                    document.getElementById('orbit-indicator').textContent = 'Step 2 — Move to set orbit radius, then click to launch a Planet 🌍';
+                    showToast(`Selected Star #${existingStar.id} as anchor! Now set the orbit`);
+                } else {
+                    // Create a new star
+                    if (bodies.length >= MAX_BODIES) {
+                        showToast('Maximum capacity reached');
+                        orbitMode = null;
+                        document.getElementById('btn-orbit').classList.remove('orbit-active');
+                        document.getElementById('btn-orbit').textContent = '🌀 Orbit Setup';
+                        return;
+                    }
+                    const mass = 800 + Math.random() * 400;
+                    const anchor = new Body(x, y, 0, 0, mass, bodies.length, true);
+                    bodies.push(anchor);
+                    orbitMode = { phase: 'place_orbit', anchor: anchor, previewX: x + 100, previewY: y };
+                    document.getElementById('orbit-indicator').textContent = 'Step 2 — Move to set orbit radius, then click to launch a Planet 🌍';
+                    showToast('Star placed! Now click to set the orbit');
                 }
-                const mass = 800 + Math.random() * 400;
-                const anchor = new Body(x, y, 0, 0, mass, bodies.length, true);
-                bodies.push(anchor);
-                orbitMode = { phase: 'place_orbit', anchor: anchor, previewX: x + 100, previewY: y };
-                document.getElementById('orbit-indicator').textContent = 'Step 2 — Move to set orbit radius, then click to launch a Planet 🌍';
-                showToast('Star placed! Now click to set the orbit');
             } else if (orbitMode.phase === 'place_orbit') {
                 // Phase 2: Place satellite in perfect circular orbit
                 if (bodies.length >= MAX_BODIES) {
@@ -1209,6 +1238,32 @@
         }
 
         function drawOrbitPreview() {
+            // ── Phase 1: Highlight existing stars when hovering ──
+            if (orbitMode && orbitMode.phase === 'place_star') {
+                const hStar = findStarNearPoint(mousePos.x, mousePos.y);
+                if (hStar) {
+                    // Pulsing selection ring around the hovered star
+                    const pulse = 0.4 + 0.25 * Math.sin(performance.now() * 0.005);
+                    const ringR = hStar.radius * 2.5 + 6;
+                    ctx.save();
+                    ctx.setLineDash([6, 4]);
+                    ctx.lineDashOffset = -(performance.now() * 0.02);
+                    ctx.beginPath();
+                    ctx.arc(hStar.x, hStar.y, ringR, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(168, 85, 247, ${pulse.toFixed(3)})`;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    ctx.restore();
+
+                    // "Select" label
+                    ctx.font = '11px Inter, sans-serif';
+                    ctx.fillStyle = `rgba(168, 85, 247, ${(pulse + 0.2).toFixed(3)})`;
+                    ctx.fillText('☀️ Click to select', hStar.x + ringR + 8, hStar.y + 4);
+                }
+                return;
+            }
+
+            // ── Phase 2: Orbit radius preview ──
             if (!orbitMode || orbitMode.phase !== 'place_orbit') return;
 
             const anchor = orbitMode.anchor;

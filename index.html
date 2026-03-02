@@ -107,6 +107,10 @@
             flex-wrap: wrap;
         }
 
+        .btn-row+.btn-row {
+            margin-top: 8px;
+        }
+
         .btn {
             flex: 1 1 auto;
             min-width: 0;
@@ -135,6 +139,25 @@
             color: #050510;
         }
 
+        .btn.orbit-active {
+            background: linear-gradient(135deg, #a855f7, #ec4899);
+            border-color: #a855f7;
+            color: #fff;
+            animation: orbit-pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes orbit-pulse {
+
+            0%,
+            100% {
+                box-shadow: 0 0 8px rgba(168, 85, 247, 0.3);
+            }
+
+            50% {
+                box-shadow: 0 0 20px rgba(168, 85, 247, 0.6);
+            }
+        }
+
         /* ─── Stats ─── */
         #stats {
             position: fixed;
@@ -148,6 +171,21 @@
             letter-spacing: 1px;
             line-height: 1.65;
             pointer-events: none;
+        }
+
+        #stat-bonds {
+            color: rgba(168, 85, 247, 0.8);
+            font-weight: 700;
+        }
+
+        #stat-status {
+            font-family: 'Inter', sans-serif;
+            font-size: .65rem;
+            font-style: italic;
+            color: rgba(207, 216, 232, 0.4);
+            max-width: 280px;
+            margin-top: 4px;
+            transition: opacity 0.8s ease;
         }
 
         /* ─── Toast ─── */
@@ -196,11 +234,12 @@
             <span>Drag</span> to slingshot with velocity.<br>
             <span>Right-click</span> to place a massive Star.
         </p>
-        <div class="btn-row" style="margin-bottom:8px">
+        <div class="btn-row">
             <button class="btn" id="btn-audio" onclick="toggleAudio()">♫ Start Audio</button>
             <button class="btn" id="btn-trails" onclick="toggleTrails()">Trails: On</button>
         </div>
         <div class="btn-row">
+            <button class="btn" id="btn-orbit" onclick="toggleOrbitMode()">🌀 Orbit Setup</button>
             <button class="btn" onclick="addRandomBody()">+ Random</button>
             <button class="btn" onclick="clearSystem()">Reset</button>
         </div>
@@ -209,15 +248,17 @@
     <div id="stats">
         <div id="stat-nodes">NODES: 0</div>
         <div id="stat-pairs">PAIRS: 0</div>
+        <div id="stat-bonds">INVISIBLE BONDS: 0</div>
         <div id="stat-energy">ENERGY: 0</div>
         <div>RESOLVER: MULTI-STAGE v2.0</div>
+        <div id="stat-status">Silent forces at rest…</div>
     </div>
 
     <div id="toast"></div>
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        //  CELESTIAL SYMPHONY — Multi-Stage Physics + Audio Engine
+        //  CELESTIAL SYMPHONY — Multi-Stage Physics + Immersive Audio
         // ═══════════════════════════════════════════════════════════════
 
         const canvas = document.getElementById('canvas');
@@ -225,7 +266,9 @@
         const toastEl = document.getElementById('toast');
         const statNodes = document.getElementById('stat-nodes');
         const statPairs = document.getElementById('stat-pairs');
+        const statBonds = document.getElementById('stat-bonds');
         const statEnergy = document.getElementById('stat-energy');
+        const statStatus = document.getElementById('stat-status');
 
         let W, H;
         let bodies = [];
@@ -235,13 +278,21 @@
         let dragStart = null;
         let dragCurrent = null;
 
+        // ─── Orbit Mode State ───
+        let orbitMode = null; // null | { phase: 'place_star' } | { phase: 'place_orbit', anchor, previewX, previewY }
+
         // ─── Audio State ───
         let audioCtx = null;
         let masterGain = null;
         let compressor = null;
-        let reverbNode = null;
+        let convolver = null;
+        let reverbWet = null;
+        let droneOsc = null;
+        let droneGain = null;
+        let droneFilter = null;
         let isAudioOn = false;
-        const activePairOscillators = new Map(); // key: "i-j", value: { osc, gain }
+        const activePairOscillators = new Map(); // key: "i-j", value: { osc1, osc2, gain, panner, filter? }
+        const closeEncounterPairs = new Set(); // tracks pairs currently in close encounter
 
         // ─── Constants ───
         const G = 0.4;
@@ -250,9 +301,9 @@
         const TRAIL_LENGTH = 180;
         const DAMPING = 0.9998;
         const BOUNDARY_MARGIN = 80;
+        const CLOSE_ENCOUNTER_THRESHOLD = 0.15; // 15% of max interaction distance
 
         // ─── Musical Intervals (frequency ratios relative to a root) ───
-        // Ordered by consonance: most consonant intervals mapped to closest proximity
         const MUSICAL_INTERVALS = [
             { name: 'Unison', ratio: 1 / 1, consonance: 1.0 },
             { name: 'Octave', ratio: 2 / 1, consonance: 0.95 },
@@ -268,23 +319,35 @@
             { name: 'Minor 2nd', ratio: 16 / 15, consonance: 0.05 },
         ];
 
-        // Root notes (one per body, assigned in a cycle)
+        // Root notes per body (C3 through C4 pentatonic-ish for warmth)
         const ROOT_NOTES = [130.81, 146.83, 164.81, 174.61, 196.00, 220.00, 246.94, 261.63];
 
         // ─── Color Palette ───
         const NODE_COLORS = [
             { h: 195, s: 100, l: 60 },  // Cyan
-            { h: 270, s: 80, l: 65 },  // Purple
-            { h: 330, s: 85, l: 65 },  // Pink
-            { h: 40, s: 95, l: 60 },  // Gold
-            { h: 160, s: 75, l: 55 },  // Teal
-            { h: 15, s: 90, l: 60 },  // Coral
-            { h: 220, s: 85, l: 65 },  // Blue
-            { h: 80, s: 70, l: 55 },  // Lime
+            { h: 270, s: 80, l: 65 },   // Purple
+            { h: 330, s: 85, l: 65 },   // Pink
+            { h: 40, s: 95, l: 60 },    // Gold
+            { h: 160, s: 75, l: 55 },   // Teal
+            { h: 15, s: 90, l: 60 },    // Coral
+            { h: 220, s: 85, l: 65 },   // Blue
+            { h: 80, s: 70, l: 55 },    // Lime
+        ];
+
+        // ─── Invisible Interaction Status Messages ───
+        const STATUS_MESSAGES = [
+            "Silent forces at rest…",
+            "Invisible gravitational threads forming…",
+            "Hidden bonds shaping orbital paths…",
+            "Unseen forces sculpting the cosmic dance…",
+            "Gravitational resonance pulsing between nodes…",
+            "The invisible hand of gravity conducts…",
+            "Dark currents of force flow unseen…",
+            "Mutual attraction weaving through void…",
         ];
 
         // ═══════════════════════════════════════════
-        //  STARFIELD
+        //  STARFIELD (with gravitational lensing)
         // ═══════════════════════════════════════════
         function initStars() {
             stars = [];
@@ -302,11 +365,25 @@
 
         function drawStars(time) {
             for (const s of stars) {
+                let drawX = s.x, drawY = s.y;
+
+                // ── Gravitational Lensing: stars subtly displaced toward massive bodies ──
+                for (const b of bodies) {
+                    const dx = b.x - s.x;
+                    const dy = b.y - s.y;
+                    const distSq = dx * dx + dy * dy;
+                    if (distSq < 90000) { // Within 300px
+                        const strength = b.mass * 0.12 / (distSq + 800);
+                        drawX += dx * strength;
+                        drawY += dy * strength;
+                    }
+                }
+
                 const flicker = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(time * s.twinkleSpeed + s.twinklePhase));
                 const alpha = s.brightness * flicker;
                 ctx.beginPath();
                 ctx.fillStyle = `rgba(200, 220, 255, ${alpha.toFixed(3)})`;
-                ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+                ctx.arc(drawX, drawY, s.r, 0, Math.PI * 2);
                 ctx.fill();
             }
         }
@@ -331,6 +408,12 @@
                 this.id = Body._nextId++;
                 this.rootNote = ROOT_NOTES[this.id % ROOT_NOTES.length];
                 this.pulsePhase = Math.random() * Math.PI * 2;
+
+                // Force accumulation for whiskers
+                this.forceX = 0;
+                this.forceY = 0;
+                // Interaction intensity for glow boost
+                this.interactionIntensity = 0;
             }
 
             get speed() { return Math.sqrt(this.vx * this.vx + this.vy * this.vy); }
@@ -359,13 +442,15 @@
 
             draw(time) {
                 const pulse = 1 + 0.08 * Math.sin(time * 0.003 + this.pulsePhase);
+                const intensityBoost = 1 + this.interactionIntensity * 0.4;
                 const r = this.radius * pulse;
 
-                // Outer glow
-                const glowR = r * 6;
+                // Outer glow — amplified by invisible interaction intensity
+                const glowR = r * 6 * intensityBoost;
+                const glowAlpha = 0.18 + this.interactionIntensity * 0.12;
                 const grad = ctx.createRadialGradient(this.x, this.y, r * 0.5, this.x, this.y, glowR);
-                grad.addColorStop(0, `hsla(${this.hue}, ${this.sat}%, ${this.lit}%, 0.18)`);
-                grad.addColorStop(0.4, `hsla(${this.hue}, ${this.sat}%, ${this.lit}%, 0.06)`);
+                grad.addColorStop(0, `hsla(${this.hue}, ${this.sat}%, ${this.lit}%, ${glowAlpha.toFixed(3)})`);
+                grad.addColorStop(0.4, `hsla(${this.hue}, ${this.sat}%, ${this.lit}%, ${(glowAlpha * 0.33).toFixed(3)})`);
                 grad.addColorStop(1, `hsla(${this.hue}, ${this.sat}%, ${this.lit}%, 0)`);
                 ctx.beginPath();
                 ctx.fillStyle = grad;
@@ -391,6 +476,13 @@
         function resolvePhysics() {
             const n = bodies.length;
 
+            // Reset per-frame accumulators
+            for (const b of bodies) {
+                b.forceX = 0;
+                b.forceY = 0;
+                b.interactionIntensity = 0;
+            }
+
             // STAGE 1: N-Body Gravitational Acceleration
             for (let i = 0; i < n; i++) {
                 const a = bodies[i];
@@ -407,6 +499,12 @@
                     a.vy += fy / a.mass;
                     b.vx -= fx / b.mass;
                     b.vy -= fy / b.mass;
+
+                    // Accumulate force vectors for whisker visualization
+                    a.forceX += fx;
+                    a.forceY += fy;
+                    b.forceX -= fx;
+                    b.forceY -= fy;
                 }
             }
 
@@ -419,7 +517,6 @@
                     const dy = b.y - a.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     if (dist < a.radius + b.radius) {
-                        // Merge b into a (conserve momentum)
                         const totalMass = a.mass + b.mass;
                         a.vx = (a.vx * a.mass + b.vx * b.mass) / totalMass;
                         a.vy = (a.vy * a.mass + b.vy * b.mass) / totalMass;
@@ -427,10 +524,8 @@
                         a.y = (a.y * a.mass + b.y * b.mass) / totalMass;
                         a.mass = totalMass;
                         a.radius = Math.cbrt(a.mass) * 2.5;
-                        // Blend hue
                         a.hue = (a.hue + b.hue) / 2;
                         a.color = `hsl(${a.hue}, ${a.sat}%, ${a.lit}%)`;
-                        // Remove b
                         cleanupPairAudio(j);
                         bodies.splice(j, 1);
                         j--;
@@ -460,10 +555,78 @@
         }
 
         // ═══════════════════════════════════════════
-        //  CONNECTION LINES (proximity-based)
+        //  GRAVITATIONAL RIPPLES — Invisible field visualization
         // ═══════════════════════════════════════════
-        function drawConnections() {
+        function drawRipples(time) {
+            for (const b of bodies) {
+                const massScale = Math.min(b.mass / 40, 2.5);
+                const baseR = b.radius * 2;
+                const maxR = b.radius * 12 + b.mass * 0.8;
+                const numRings = 3 + Math.floor(massScale);
+
+                for (let i = 0; i < numRings; i++) {
+                    const phase = ((time * 0.0008 * (1 + massScale * 0.2)) + i / numRings) % 1;
+                    const r = baseR + phase * (maxR - baseR);
+                    const fadeOut = 1 - phase;
+                    const alpha = fadeOut * fadeOut * 0.07 * massScale;
+                    if (alpha < 0.002) continue;
+
+                    ctx.beginPath();
+                    ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+                    ctx.strokeStyle = `hsla(${b.hue}, ${b.sat}%, ${b.lit}%, ${alpha.toFixed(4)})`;
+                    ctx.lineWidth = 0.5 + fadeOut * 1.2;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        //  FORCE WHISKERS — Reveal the invisible pull
+        // ═══════════════════════════════════════════
+        function drawForceWhiskers() {
+            for (const b of bodies) {
+                const fMag = Math.sqrt(b.forceX * b.forceX + b.forceY * b.forceY);
+                if (fMag < 0.01) continue;
+
+                // Normalize & scale for visual
+                const scale = Math.min(fMag * 8, 50);
+                const nx = b.forceX / fMag;
+                const ny = b.forceY / fMag;
+                const endX = b.x + nx * scale;
+                const endY = b.y + ny * scale;
+
+                // Whisker line
+                const alpha = Math.min(fMag * 2, 0.5);
+                ctx.beginPath();
+                ctx.moveTo(b.x, b.y);
+                ctx.lineTo(endX, endY);
+                ctx.strokeStyle = `hsla(${b.hue}, ${b.sat}%, ${b.lit + 15}%, ${alpha.toFixed(3)})`;
+                ctx.lineWidth = 1.2;
+                ctx.stroke();
+
+                // Arrowhead
+                const headLen = 5;
+                const angle = Math.atan2(ny, nx);
+                ctx.beginPath();
+                ctx.moveTo(endX, endY);
+                ctx.lineTo(endX - headLen * Math.cos(angle - 0.4), endY - headLen * Math.sin(angle - 0.4));
+                ctx.moveTo(endX, endY);
+                ctx.lineTo(endX - headLen * Math.cos(angle + 0.4), endY - headLen * Math.sin(angle + 0.4));
+                ctx.strokeStyle = `hsla(${b.hue}, ${b.sat}%, ${b.lit + 15}%, ${(alpha * 0.8).toFixed(3)})`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        //  CONNECTION LINES — Flowing invisible bonds
+        // ═══════════════════════════════════════════
+        let activeBondCount = 0;
+
+        function drawConnections(time) {
             const maxDist = Math.min(W, H) * 0.35;
+            activeBondCount = 0;
+
             for (let i = 0; i < bodies.length; i++) {
                 for (let j = i + 1; j < bodies.length; j++) {
                     const a = bodies[i];
@@ -472,46 +635,138 @@
                     const dy = b.y - a.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     if (dist < maxDist) {
+                        activeBondCount++;
                         const t = 1 - dist / maxDist;
-                        const alpha = t * t * 0.25;
-                        // Gradient line between the two body colors
-                        const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
-                        grad.addColorStop(0, `hsla(${a.hue}, ${a.sat}%, ${a.lit}%, ${alpha.toFixed(3)})`);
-                        grad.addColorStop(1, `hsla(${b.hue}, ${b.sat}%, ${b.lit}%, ${alpha.toFixed(3)})`);
+
+                        // Accumulate interaction intensity for glow boost
+                        const intensity = t * t;
+                        a.interactionIntensity += intensity;
+                        b.interactionIntensity += intensity;
+
+                        const alpha = t * t * 0.3;
+
+                        // ── Flowing dashed line (force flows toward heavier body) ──
+                        // Draw from lighter to heavier so dashes flow toward mass
+                        const [from, to] = a.mass <= b.mass ? [a, b] : [b, a];
+
+                        ctx.save();
+                        ctx.setLineDash([6, 4]);
+                        ctx.lineDashOffset = -(time * 0.018);
+
+                        const grad = ctx.createLinearGradient(from.x, from.y, to.x, to.y);
+                        grad.addColorStop(0, `hsla(${from.hue}, ${from.sat}%, ${from.lit}%, ${(alpha * 0.6).toFixed(3)})`);
+                        grad.addColorStop(0.5, `hsla(${(from.hue + to.hue) / 2}, 70%, 70%, ${alpha.toFixed(3)})`);
+                        grad.addColorStop(1, `hsla(${to.hue}, ${to.sat}%, ${to.lit}%, ${(alpha * 0.6).toFixed(3)})`);
                         ctx.beginPath();
-                        ctx.moveTo(a.x, a.y);
-                        ctx.lineTo(b.x, b.y);
+                        ctx.moveTo(from.x, from.y);
+                        ctx.lineTo(to.x, to.y);
                         ctx.strokeStyle = grad;
                         ctx.lineWidth = t * 2;
                         ctx.stroke();
+                        ctx.restore();
+
+                        // ── Force Nexus: glowing midpoint showing interaction peak ──
+                        const mx = (a.x + b.x) / 2;
+                        const my = (a.y + b.y) / 2;
+                        const nexusR = 2 + t * 5;
+                        const nexusAlpha = t * t * 0.5;
+                        const blendHue = (a.hue + b.hue) / 2;
+
+                        // Nexus glow
+                        const nexusGrad = ctx.createRadialGradient(mx, my, 0, mx, my, nexusR * 3);
+                        nexusGrad.addColorStop(0, `hsla(${blendHue}, 80%, 75%, ${nexusAlpha.toFixed(3)})`);
+                        nexusGrad.addColorStop(0.5, `hsla(${blendHue}, 60%, 60%, ${(nexusAlpha * 0.3).toFixed(3)})`);
+                        nexusGrad.addColorStop(1, `hsla(${blendHue}, 60%, 60%, 0)`);
+                        ctx.beginPath();
+                        ctx.fillStyle = nexusGrad;
+                        ctx.arc(mx, my, nexusR * 3, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        // Nexus core
+                        ctx.beginPath();
+                        ctx.fillStyle = `hsla(${blendHue}, 90%, 85%, ${(nexusAlpha * 0.8).toFixed(3)})`;
+                        ctx.arc(mx, my, nexusR * 0.5, 0, Math.PI * 2);
+                        ctx.fill();
                     }
                 }
             }
         }
 
         // ═══════════════════════════════════════════
-        //  AUDIO ENGINE — Musical Interval Mapping
+        //  AUDIO ENGINE — Immersive Layered Synthesis
         // ═══════════════════════════════════════════
+        function createReverbImpulse(duration, decay) {
+            const length = audioCtx.sampleRate * duration;
+            const impulse = audioCtx.createBuffer(2, length, audioCtx.sampleRate);
+            for (let ch = 0; ch < 2; ch++) {
+                const data = impulse.getChannelData(ch);
+                for (let i = 0; i < length; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+                }
+            }
+            return impulse;
+        }
+
         function initAudioContext() {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-            // Compressor to prevent clipping
+            // ── Compressor (gentler to allow dynamics) ──
             compressor = audioCtx.createDynamicsCompressor();
-            compressor.threshold.value = -24;
-            compressor.knee.value = 12;
-            compressor.ratio.value = 8;
-            compressor.attack.value = 0.005;
-            compressor.release.value = 0.15;
+            compressor.threshold.value = -14;
+            compressor.knee.value = 10;
+            compressor.ratio.value = 4;
+            compressor.attack.value = 0.003;
+            compressor.release.value = 0.2;
 
-            // Reverb (convolver-like via delay feedback)
-            reverbNode = audioCtx.createGain();
-            reverbNode.gain.value = 0.35;
-
+            // ── Master Gain (louder!) ──
             masterGain = audioCtx.createGain();
-            masterGain.gain.value = 0.45;
+            masterGain.gain.value = 0.8;
 
+            // ── Convolution Reverb ──
+            convolver = audioCtx.createConvolver();
+            convolver.buffer = createReverbImpulse(2.5, 2.8);
+
+            reverbWet = audioCtx.createGain();
+            reverbWet.gain.value = 0.25;
+
+            // ── Routing ──
+            // Dry: masterGain → compressor → destination
+            // Wet: masterGain → convolver → reverbWet → compressor → destination
             masterGain.connect(compressor);
+            masterGain.connect(convolver);
+            convolver.connect(reverbWet);
+            reverbWet.connect(compressor);
             compressor.connect(audioCtx.destination);
+
+            // ── Drone Bass Layer ──
+            initDrone();
+        }
+
+        function initDrone() {
+            droneOsc = audioCtx.createOscillator();
+            droneOsc.type = 'triangle';
+            droneOsc.frequency.value = 55; // A1
+
+            // Sub-harmonics
+            const droneOsc2 = audioCtx.createOscillator();
+            droneOsc2.type = 'sine';
+            droneOsc2.frequency.value = 27.5; // A0 sub
+
+            droneFilter = audioCtx.createBiquadFilter();
+            droneFilter.type = 'lowpass';
+            droneFilter.frequency.value = 120;
+            droneFilter.Q.value = 2;
+
+            droneGain = audioCtx.createGain();
+            droneGain.gain.value = 0.0; // Start silent, modulate with energy
+
+            droneOsc.connect(droneFilter);
+            droneOsc2.connect(droneFilter);
+            droneFilter.connect(droneGain);
+            droneGain.connect(masterGain);
+
+            droneOsc.start();
+            droneOsc2.start();
         }
 
         function getIntervalForDistance(dist) {
@@ -524,17 +779,55 @@
         function pairKey(i, j) { return i < j ? `${i}-${j}` : `${j}-${i}`; }
 
         function cleanupPairAudio(removedIndex) {
-            // Remove all oscillator pairs involving the removed body index
             for (const [key, pair] of activePairOscillators) {
                 const [a, b] = key.split('-').map(Number);
                 if (a === removedIndex || b === removedIndex) {
                     try {
                         pair.gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
-                        setTimeout(() => { try { pair.osc.stop(); } catch (e) { } }, 200);
+                        setTimeout(() => {
+                            try { pair.osc1.stop(); } catch (e) { }
+                            try { pair.osc2.stop(); } catch (e) { }
+                        }, 200);
                     } catch (e) { }
                     activePairOscillators.delete(key);
+                    closeEncounterPairs.delete(key);
                 }
             }
+        }
+
+        function triggerBellTone(freq, panValue) {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+
+            // FM bell synthesis: carrier + modulator
+            const carrier = audioCtx.createOscillator();
+            const modulator = audioCtx.createOscillator();
+            const modGain = audioCtx.createGain();
+            const bellGain = audioCtx.createGain();
+            const bellPan = audioCtx.createStereoPanner();
+
+            carrier.type = 'sine';
+            carrier.frequency.value = freq * 2; // Octave up for shimmer
+            modulator.type = 'sine';
+            modulator.frequency.value = freq * 3.5; // Non-harmonic ratio for metallic bell
+            modGain.gain.value = freq * 0.4;
+
+            modulator.connect(modGain);
+            modGain.connect(carrier.frequency);
+
+            bellGain.gain.setValueAtTime(0.12, now);
+            bellGain.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
+
+            bellPan.pan.value = Math.max(-1, Math.min(1, panValue));
+
+            carrier.connect(bellGain);
+            bellGain.connect(bellPan);
+            bellPan.connect(masterGain);
+
+            carrier.start(now);
+            modulator.start(now);
+            carrier.stop(now + 2);
+            modulator.stop(now + 2);
         }
 
         function updateAudio() {
@@ -543,6 +836,20 @@
             const maxDist = Math.min(W, H) * 0.4;
             const currentPairs = new Set();
 
+            // ── Update Drone based on total gravitational energy ──
+            if (droneGain) {
+                const totalEnergy = bodies.reduce((sum, b) => sum + b.kineticEnergy, 0);
+                const droneVol = Math.min(0.06 + totalEnergy * 0.0003, 0.18);
+                droneGain.gain.setTargetAtTime(bodies.length > 0 ? droneVol : 0, now, 0.5);
+
+                // Modulate drone filter by energy for movement
+                if (droneFilter) {
+                    const filterFreq = 80 + Math.min(totalEnergy * 0.5, 300);
+                    droneFilter.frequency.setTargetAtTime(filterFreq, now, 0.3);
+                }
+            }
+
+            // ── Per-pair oscillators ──
             for (let i = 0; i < bodies.length; i++) {
                 for (let j = i + 1; j < bodies.length; j++) {
                     const a = bodies[i];
@@ -559,45 +866,223 @@
                     const interval = getIntervalForDistance(dist);
                     const baseFreq = a.rootNote;
                     const freq = baseFreq * interval.ratio;
-                    const vol = Math.pow(1 - dist / maxDist, 2) * 0.08 * interval.consonance;
+                    const proximity = 1 - dist / maxDist;
+                    const vol = Math.pow(proximity, 1.5) * 0.22 * interval.consonance;
+
+                    // Stereo pan based on midpoint X position
+                    const midX = (a.x + b.x) / 2;
+                    const panVal = (midX / W) * 2 - 1; // -1 to 1
+
+                    // ── Close Encounter Bell ──
+                    if (dist < maxDist * CLOSE_ENCOUNTER_THRESHOLD) {
+                        if (!closeEncounterPairs.has(key)) {
+                            closeEncounterPairs.add(key);
+                            triggerBellTone(freq, panVal);
+                        }
+                    } else {
+                        closeEncounterPairs.delete(key);
+                    }
 
                     if (activePairOscillators.has(key)) {
-                        // Update existing oscillator
+                        // Update existing pair
                         const pair = activePairOscillators.get(key);
-                        pair.osc.frequency.setTargetAtTime(freq, now, 0.15);
+                        pair.osc1.frequency.setTargetAtTime(freq, now, 0.15);
+                        pair.osc2.frequency.setTargetAtTime(freq * 1.00405, now, 0.15); // +7 cents detune
                         pair.gain.gain.setTargetAtTime(vol, now, 0.1);
+                        pair.panner.pan.setTargetAtTime(panVal, now, 0.15);
                     } else {
-                        // Create new pair oscillator
-                        const osc = audioCtx.createOscillator();
+                        // Create new layered pair
+                        const waveforms = ['sine', 'triangle', 'sawtooth'];
+                        const waveIdx = (a.id + b.id) % 3;
+                        const waveType = waveforms[waveIdx];
+
+                        const osc1 = audioCtx.createOscillator();
+                        const osc2 = audioCtx.createOscillator(); // Detuned sub for chorus
                         const gain = audioCtx.createGain();
+                        const panner = audioCtx.createStereoPanner();
 
-                        // Alternate waveforms for textural richness
-                        osc.type = (i + j) % 3 === 0 ? 'triangle' : 'sine';
-                        osc.frequency.value = freq;
+                        osc1.type = waveType;
+                        osc1.frequency.value = freq;
+                        osc2.type = 'sine'; // Sub is always pure sine
+                        osc2.frequency.value = freq * 1.00405; // +7 cents detune
+
                         gain.gain.value = 0;
-                        gain.gain.setTargetAtTime(vol, now, 0.2);
+                        gain.gain.setTargetAtTime(vol, now, 0.25);
+                        panner.pan.value = panVal;
 
-                        osc.connect(gain);
-                        gain.connect(masterGain);
-                        osc.start(now);
+                        let filter = null;
 
-                        activePairOscillators.set(key, { osc, gain });
+                        if (waveType === 'sawtooth') {
+                            // Tame the sawtooth with a low-pass filter
+                            filter = audioCtx.createBiquadFilter();
+                            filter.type = 'lowpass';
+                            filter.frequency.value = 900;
+                            filter.Q.value = 1.5;
+                            osc1.connect(filter);
+                            filter.connect(gain);
+                        } else {
+                            osc1.connect(gain);
+                        }
+
+                        osc2.connect(gain);
+                        gain.connect(panner);
+                        panner.connect(masterGain);
+
+                        osc1.start(now);
+                        osc2.start(now);
+
+                        activePairOscillators.set(key, { osc1, osc2, gain, panner, filter });
                     }
                 }
             }
 
-            // Fade out and remove pairs that are no longer close
+            // Fade out and remove pairs no longer close
             for (const [key, pair] of activePairOscillators) {
                 if (!currentPairs.has(key)) {
-                    pair.gain.gain.setTargetAtTime(0, now, 0.3);
-                    setTimeout(() => { try { pair.osc.stop(); } catch (e) { } }, 800);
+                    pair.gain.gain.setTargetAtTime(0, now, 0.35);
+                    setTimeout(() => {
+                        try { pair.osc1.stop(); } catch (e) { }
+                        try { pair.osc2.stop(); } catch (e) { }
+                    }, 900);
                     activePairOscillators.delete(key);
+                    closeEncounterPairs.delete(key);
                 }
             }
         }
 
         // ═══════════════════════════════════════════
-        //  INTERACTION
+        //  ORBIT SETUP MODE
+        // ═══════════════════════════════════════════
+        function toggleOrbitMode() {
+            const btn = document.getElementById('btn-orbit');
+            if (orbitMode) {
+                // Cancel orbit mode
+                orbitMode = null;
+                btn.classList.remove('orbit-active');
+                btn.textContent = '🌀 Orbit Setup';
+                showToast('Orbit mode cancelled');
+            } else {
+                orbitMode = { phase: 'place_star' };
+                btn.classList.add('orbit-active');
+                btn.textContent = '🌀 Cancel Orbit';
+                showToast('Click to place the central star…');
+            }
+        }
+
+        function handleOrbitClick(x, y) {
+            if (!orbitMode) return;
+
+            if (orbitMode.phase === 'place_star') {
+                // Phase 1: Place massive anchor star
+                if (bodies.length >= MAX_BODIES) {
+                    showToast('Maximum capacity reached');
+                    orbitMode = null;
+                    document.getElementById('btn-orbit').classList.remove('orbit-active');
+                    document.getElementById('btn-orbit').textContent = '🌀 Orbit Setup';
+                    return;
+                }
+                const mass = 100 + Math.random() * 40;
+                const anchor = new Body(x, y, 0, 0, mass, bodies.length);
+                bodies.push(anchor);
+                orbitMode = { phase: 'place_orbit', anchor: anchor, previewX: x + 100, previewY: y };
+                showToast('Move to set orbit radius — click to launch satellite');
+            } else if (orbitMode.phase === 'place_orbit') {
+                // Phase 2: Place satellite in perfect circular orbit
+                if (bodies.length >= MAX_BODIES) {
+                    showToast('Maximum capacity reached');
+                    orbitMode = null;
+                    document.getElementById('btn-orbit').classList.remove('orbit-active');
+                    document.getElementById('btn-orbit').textContent = '🌀 Orbit Setup';
+                    return;
+                }
+
+                const anchor = orbitMode.anchor;
+                const dx = x - anchor.x;
+                const dy = y - anchor.y;
+                const r = Math.sqrt(dx * dx + dy * dy);
+
+                if (r < anchor.radius + 15) {
+                    showToast('Too close to the star! Move further out.');
+                    return;
+                }
+
+                // Circular orbit velocity: v = sqrt(G * M / r)
+                const orbitalSpeed = Math.sqrt(G * anchor.mass / r);
+
+                // Perpendicular direction (counter-clockwise)
+                const angle = Math.atan2(dy, dx);
+                const vx = -Math.sin(angle) * orbitalSpeed;
+                const vy = Math.cos(angle) * orbitalSpeed;
+
+                const mass = 8 + Math.random() * 12;
+                const satellite = new Body(x, y, vx, vy, mass, bodies.length);
+                bodies.push(satellite);
+
+                const period = (2 * Math.PI * r / orbitalSpeed / 60).toFixed(1);
+                showToast(`Perfect orbit! v=${orbitalSpeed.toFixed(2)}, T≈${period}s ✨`);
+
+                // Exit orbit mode
+                orbitMode = null;
+                const btn = document.getElementById('btn-orbit');
+                btn.classList.remove('orbit-active');
+                btn.textContent = '🌀 Orbit Setup';
+            }
+        }
+
+        function drawOrbitPreview() {
+            if (!orbitMode || orbitMode.phase !== 'place_orbit') return;
+
+            const anchor = orbitMode.anchor;
+            const px = orbitMode.previewX;
+            const py = orbitMode.previewY;
+            const dx = px - anchor.x;
+            const dy = py - anchor.y;
+            const r = Math.sqrt(dx * dx + dy * dy);
+
+            if (r < 5) return;
+
+            // ── Predicted orbit circle ──
+            ctx.save();
+            ctx.setLineDash([8, 6]);
+            ctx.beginPath();
+            ctx.arc(anchor.x, anchor.y, r, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(168, 85, 247, 0.35)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.restore();
+
+            // ── Satellite preview dot ──
+            ctx.beginPath();
+            ctx.arc(px, py, 5, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(168, 85, 247, 0.6)';
+            ctx.fill();
+
+            // ── Velocity vector preview ──
+            const orbitalSpeed = Math.sqrt(G * anchor.mass / r);
+            const angle = Math.atan2(dy, dx);
+            const vx = -Math.sin(angle) * orbitalSpeed;
+            const vy = Math.cos(angle) * orbitalSpeed;
+            const vScale = 12;
+
+            ctx.beginPath();
+            ctx.moveTo(px, py);
+            ctx.lineTo(px + vx * vScale, py + vy * vScale);
+            ctx.strokeStyle = 'rgba(236, 72, 153, 0.6)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // ── Info text ──
+            ctx.font = '11px Inter, sans-serif';
+            ctx.fillStyle = 'rgba(168, 85, 247, 0.8)';
+            const infoY = py - 18;
+            ctx.fillText(`r = ${r.toFixed(0)}px`, px + 12, infoY);
+            ctx.fillText(`v = ${orbitalSpeed.toFixed(2)}`, px + 12, infoY + 14);
+            const period = (2 * Math.PI * r / orbitalSpeed / 60).toFixed(1);
+            ctx.fillText(`T ≈ ${period}s`, px + 12, infoY + 28);
+        }
+
+        // ═══════════════════════════════════════════
+        //  INTERACTION (Mouse Events)
         // ═══════════════════════════════════════════
         function placeBody(x, y, vx, vy, massive) {
             if (bodies.length >= MAX_BODIES) {
@@ -614,17 +1099,32 @@
             if (e.button === 2) {
                 // Right-click: massive star
                 e.preventDefault();
+                if (orbitMode) return; // Don't allow right-click during orbit mode
                 const vx = (Math.random() - 0.5) * 0.4;
                 const vy = (Math.random() - 0.5) * 0.4;
                 placeBody(e.clientX, e.clientY, vx, vy, true);
                 return;
             }
+
+            // Orbit mode intercept
+            if (orbitMode) {
+                handleOrbitClick(e.clientX, e.clientY);
+                return;
+            }
+
             mouseDown = true;
             dragStart = { x: e.clientX, y: e.clientY };
             dragCurrent = { x: e.clientX, y: e.clientY };
         });
 
         canvas.addEventListener('mousemove', (e) => {
+            // Orbit mode preview tracking
+            if (orbitMode && orbitMode.phase === 'place_orbit') {
+                orbitMode.previewX = e.clientX;
+                orbitMode.previewY = e.clientY;
+                return;
+            }
+
             if (mouseDown) {
                 dragCurrent = { x: e.clientX, y: e.clientY };
             }
@@ -636,7 +1136,6 @@
             const dx = dragStart.x - dragCurrent.x;
             const dy = dragStart.y - dragCurrent.y;
             const dragDist = Math.sqrt(dx * dx + dy * dy);
-            // Scale the drag into velocity
             const scale = 0.06;
             const vx = dragDist > 5 ? dx * scale : (Math.random() - 0.5) * 0.6;
             const vy = dragDist > 5 ? dy * scale : (Math.random() - 0.5) * 0.6;
@@ -657,7 +1156,6 @@
             const dist = Math.sqrt(dx * dx + dy * dy);
             if (dist < 5) return;
 
-            // Draw launch vector
             ctx.setLineDash([6, 6]);
             ctx.beginPath();
             ctx.moveTo(dragStart.x, dragStart.y);
@@ -667,14 +1165,12 @@
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // Origin circle
             ctx.beginPath();
             ctx.arc(dragStart.x, dragStart.y, 8, 0, Math.PI * 2);
             ctx.strokeStyle = 'rgba(0, 212, 255, 0.6)';
             ctx.lineWidth = 1;
             ctx.stroke();
 
-            // Velocity text
             const speed = (dist * 0.06).toFixed(1);
             ctx.font = '11px Inter, sans-serif';
             ctx.fillStyle = 'rgba(0, 212, 255, 0.7)';
@@ -691,15 +1187,19 @@
                 isAudioOn = true;
                 btn.textContent = '♫ Audio On';
                 btn.classList.add('active');
-                showToast('Symphony Initialized — place nodes to hear the cosmos');
+                showToast('Symphony initialized — place nodes to hear the cosmos');
             } else {
                 isAudioOn = false;
-                // Fade out all oscillators
                 for (const [key, pair] of activePairOscillators) {
                     pair.gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
-                    setTimeout(() => { try { pair.osc.stop(); } catch (e) { } }, 300);
+                    setTimeout(() => {
+                        try { pair.osc1.stop(); } catch (e) { }
+                        try { pair.osc2.stop(); } catch (e) { }
+                    }, 300);
                 }
                 activePairOscillators.clear();
+                closeEncounterPairs.clear();
+                if (droneGain) droneGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.3);
                 btn.textContent = '♫ Start Audio';
                 btn.classList.remove('active');
                 showToast('Audio paused');
@@ -725,13 +1225,20 @@
         }
 
         function clearSystem() {
-            // Stop all audio
             for (const [, pair] of activePairOscillators) {
-                try { pair.osc.stop(); } catch (e) { }
+                try { pair.osc1.stop(); } catch (e) { }
+                try { pair.osc2.stop(); } catch (e) { }
             }
             activePairOscillators.clear();
+            closeEncounterPairs.clear();
             bodies = [];
             Body._nextId = 0;
+            if (orbitMode) {
+                orbitMode = null;
+                const btn = document.getElementById('btn-orbit');
+                btn.classList.remove('orbit-active');
+                btn.textContent = '🌀 Orbit Setup';
+            }
             showToast('Cosmic Reset — canvas cleared');
         }
 
@@ -743,15 +1250,33 @@
         }
 
         // ═══════════════════════════════════════════
-        //  STATS
+        //  STATS & STATUS TEXT
         // ═══════════════════════════════════════════
+        let lastStatusIndex = 0;
+
         function updateStats() {
             const n = bodies.length;
             const pairs = n * (n - 1) / 2;
             const energy = bodies.reduce((sum, b) => sum + b.kineticEnergy, 0);
             statNodes.textContent = `NODES: ${n}`;
             statPairs.textContent = `PAIRS: ${pairs}`;
+            statBonds.textContent = `INVISIBLE BONDS: ${activeBondCount}`;
             statEnergy.textContent = `ENERGY: ${energy.toFixed(1)}`;
+
+            // Update invisible interaction status message
+            if (n === 0) {
+                statStatus.textContent = STATUS_MESSAGES[0];
+            } else if (activeBondCount === 0) {
+                statStatus.textContent = "Nodes drift beyond invisible reach…";
+            } else if (activeBondCount <= 2) {
+                statStatus.textContent = STATUS_MESSAGES[1];
+            } else if (activeBondCount <= 5) {
+                const idx = 2 + Math.floor((Date.now() / 4000) % 3);
+                statStatus.textContent = STATUS_MESSAGES[idx];
+            } else {
+                const idx = 5 + Math.floor((Date.now() / 3500) % 3);
+                statStatus.textContent = STATUS_MESSAGES[idx];
+            }
         }
 
         // ═══════════════════════════════════════════
@@ -766,13 +1291,19 @@
 
             drawStars(time);
             resolvePhysics();
-            drawConnections();
 
-            // Draw trails first, then bodies on top
+            // Invisible interaction visuals
+            drawRipples(time);
+            drawConnections(time);
+            drawForceWhiskers();
+
+            // Bodies
             for (const b of bodies) b.drawTrail();
             for (const b of bodies) b.draw(time);
 
+            // Overlays
             drawDragPreview();
+            drawOrbitPreview();
 
             // Update audio every ~3 frames for perf
             if (frameCount % 3 === 0) updateAudio();
